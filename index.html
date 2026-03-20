@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyseur de Cadence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e17;
+    --card: #111827;
+    --border: #1e293b;
+    --accent: #22d3ee;
+    --accent-dim: rgba(34,211,238,0.15);
+    --warn: #f59e0b;
+    --success: #10b981;
+    --success-dim: rgba(16,185,129,0.15);
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --pause: #ef4444;
+    --orange: #f97316;
+    --blue: #3b82f6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    padding: 20px 16px;
+    min-height: 100vh;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  .tag { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 3px; font-weight: 600; margin-bottom: 6px; }
+  h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  h1 span { color: var(--accent); }
+  .subtitle { color: var(--text-dim); font-size: 12px; margin-top: 4px; }
+  .header { margin-bottom: 28px; }
+
+  /* Upload */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 20px;
+  }
+  .upload-zone:hover, .upload-zone.dragging {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .upload-zone .icon { font-size: 18px; margin-bottom: 4px; }
+  .upload-zone .hint { color: var(--text-dim); font-size: 12px; }
+  .upload-zone .done { color: var(--accent); font-weight: 600; }
+  .upload-zone .change { color: var(--text-dim); font-size: 11px; margin-left: 8px; }
+
+  /* Slider */
+  .slider-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  .slider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+  }
+  .slider-label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .slider-value { font-size: 22px; font-weight: 700; color: var(--warn); }
+  .slider-value .unit { font-size: 11px; color: var(--text-dim); font-weight: 400; margin-left: 6px; }
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--warn);
+    cursor: pointer;
+    height: 6px;
+  }
+  .slider-bounds {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* Stat cards */
+  .stats-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+  .stat-card {
+    border-radius: 12px;
+    padding: 14px 18px;
+    flex: 1 1 130px;
+    min-width: 130px;
+  }
+  .stat-card .label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .stat-card .value {
+    font-size: 26px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-card .sub { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+
+  /* Moyenne PEL section */
+  .moyenne-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 20px;
+    align-items: stretch;
+  }
+  .moyenne-chart-wrap {
+    flex: 1;
+    min-width: 0;
+  }
+  .moyenne-kpis {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 160px;
+  }
+  .kpi-box {
+    border-radius: 12px;
+    padding: 16px 20px;
+    text-align: center;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .kpi-box .kpi-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .kpi-box .kpi-value {
+    font-size: 36px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .kpi-box .kpi-sub {
+    font-size: 10px;
+    margin-top: 4px;
+    opacity: 0.7;
+  }
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+
+  /* User card */
+  .user-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 14px;
+  }
+  .user-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .user-name { font-size: 16px; font-weight: 700; color: var(--accent); }
+  .user-time { font-size: 11px; color: var(--text-dim); margin-left: 10px; }
+  .cadence-badge {
+    background: var(--success-dim);
+    color: var(--success);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .cadence-badge .unit { font-size: 10px; font-weight: 400; }
+
+  /* Chart */
+  .chart-box {
+    background: #0d1220;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    padding: 16px 16px 8px;
+    margin-top: 14px;
+  }
+  .chart-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 8px;
+    padding-bottom: 4px;
+  }
+  .chart-legend span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  .error-box {
+    color: var(--pause);
+    font-size: 13px;
+    padding: 10px 14px;
+    background: rgba(239,68,68,0.08);
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+
+  #results { display: none; }
+  canvas { max-height: 200px; }
+
+  @media (max-width: 640px) {
+    .moyenne-section { flex-direction: column; }
+    .moyenne-kpis { flex-direction: row; min-width: 0; }
+    .kpi-box .kpi-value { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="tag">Analyseur</div>
+    <h1>Cadence <span>lignes/min</span></h1>
+    <p class="subtitle">Importe un export SAP, ajuste le seuil de pause, visualise la productivité.</p>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="uploadZone">
+    <div id="uploadContent">
+      <div class="icon">↑</div>
+      <div class="hint">Glisse ton .xlsx ici ou clique pour sélectionner</div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+  </div>
+
+  <div id="errorBox" style="display:none"></div>
+
+  <div id="results">
+    <!-- Slider -->
+    <div class="slider-card">
+      <div class="slider-header">
+        <span class="slider-label">Seuil de pause</span>
+        <span class="slider-value"><span id="thresholdValue">30</span>s<span class="unit" id="thresholdUnit"></span></span>
+      </div>
+      <input type="range" id="thresholdSlider" min="5" max="300" step="5" value="30">
+      <div class="slider-bounds"><span>5s (strict)</span><span>5min (souple)</span></div>
+    </div>
+
+    <!-- Moyenne section (like screenshot) -->
+    <div class="moyenne-section" id="moyenneSection">
+      <div class="moyenne-chart-wrap">
+        <div class="section-title">Moyenne lignes/min par utilisateur</div>
+        <canvas id="moyenneChart" height="200"></canvas>
+      </div>
+      <div class="moyenne-kpis">
+        <div class="kpi-box" style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);">
+          <div class="kpi-label" style="color:var(--blue)">Nb lignes/min</div>
+          <div class="kpi-value" style="color:var(--blue)" id="kpiMoyIndiv">—</div>
+          <div class="kpi-sub" style="color:var(--blue)">Moy. individuelle</div>
+        </div>
+        <div class="kpi-box" style="background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.25);">
+          <div class="kpi-label" style="color:var(--orange)">Moyenne équipe</div>
+          <div class="kpi-value" style="color:var(--orange)" id="kpiMoyEquipe">—</div>
+          <div class="kpi-sub" style="color:var(--orange)">Tous utilisateurs</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Global stats -->
+    <div class="stats-row" id="globalStats"></div>
+
+    <!-- Users -->
+    <div id="usersContainer"></div>
+  </div>
+</div>
+
+<script>
+// ── Helpers ──
+function parseTime(val) {
+  if (val == null || val === '') return null;
+  if (typeof val === 'number') return Math.round(val * 86400);
+  const s = String(val).trim();
+  const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+  if (m) return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseInt(m[3]);
+  if (s.includes('T') || s.includes('1899') || s.includes('1900')) {
+    try { const d = new Date(s); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds(); } catch(e) {}
+  }
+  return null;
+}
+
+const SKIP = new Set(['résultat', 'résultat global', 'utilisateur', 'heure confirmation', 'atelier', 'expedition']);
+function isUserCell(val) {
+  if (val == null) return false;
+  const s = String(val).trim();
+  if (s === '' || SKIP.has(s.toLowerCase()) || !isNaN(Number(s))) return false;
+  return true;
+}
+
+function fmtDuration(secs) {
+  if (secs < 60) return Math.round(secs) + 's';
+  if (secs < 3600) return (secs / 60).toFixed(1) + ' min';
+  const h = Math.floor(secs / 3600);
+  const m = Math.round((secs % 3600) / 60);
+  return h + 'h' + String(m).padStart(2, '0');
+}
+
+function fmtTime(t) {
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  return h + ':' + String(m).padStart(2, '0');
+}
+
+function makeStatCard(label, value, sub, color) {
+  return `<div class="stat-card" style="background:${color}14;border:1px solid ${color}30">
+    <div class="label">${label}</div>
+    <div class="value" style="color:${color}">${value}</div>
+    ${sub ? `<div class="sub">${sub}</div>` : ''}
+  </div>`;
+}
+
+// ── State ──
+let parsedUsers = [];
+let charts = {};
+
+// ── Parse ──
+function parseExcel(data) {
+  const wb = XLSX.read(new Uint8Array(data), { type: 'array', raw: true });
+  const sheetName = wb.SheetNames.find(n => !n.startsWith('_com.sap')) || wb.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, raw: true });
+
+  const users = [];
+  let currentUser = null;
+  let times = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const col0 = row[0], col1 = row[1];
+
+    if (isUserCell(col0)) {
+      if (currentUser && times.length > 0) users.push({ name: currentUser, times: [...times] });
+      currentUser = String(col0).trim();
+      times = [];
+    }
+    if (currentUser && col1 != null) {
+      const s = String(col1).trim().toLowerCase();
+      if (s === 'résultat' || s === 'heure confirmation') continue;
+      const t = parseTime(col1);
+      if (t !== null && t > 0 && t < 86400) times.push(t);
+    }
+  }
+  if (currentUser && times.length > 0) users.push({ name: currentUser, times: [...times] });
+  return users;
+}
+
+function computeStats(users, threshold) {
+  return users.map(u => {
+    const { times } = u;
+    const deltas = [];
+    let activeSeconds = 0, pauseSeconds = 0, pauseCount = 0;
+
+    for (let i = 1; i < times.length; i++) {
+      const d = times[i] - times[i - 1];
+      if (d < 0) continue;
+      deltas.push(d);
+      if (d <= threshold) { activeSeconds += d; }
+      else { pauseSeconds += d; pauseCount++; }
+    }
+
+    const activeMin = activeSeconds / 60;
+    const cadence = activeMin > 0 ? times.length / activeMin : 0;
+
+    const bucketDefs = [
+      { label: '0-5s', min: 0, max: 5 },
+      { label: '5-10s', min: 5, max: 10 },
+      { label: '10-20s', min: 10, max: 20 },
+      { label: '20-30s', min: 20, max: 30 },
+      { label: '30-60s', min: 30, max: 60 },
+      { label: '1-2m', min: 60, max: 120 },
+      { label: '2-5m', min: 120, max: 300 },
+      { label: '5m+', min: 300, max: Infinity },
+    ];
+    const buckets = bucketDefs.map(b => ({
+      ...b,
+      count: b.min === 0
+        ? deltas.filter(d => d >= 0 && d <= b.max).length
+        : deltas.filter(d => d > b.min && d <= b.max).length
+    }));
+
+    return { name: u.name, lines: times.length, firstTime: times[0], lastTime: times[times.length - 1], activeSeconds, pauseSeconds, pauseCount, cadence, buckets };
+  });
+}
+
+// ── Render ──
+function render(threshold) {
+  const stats = computeStats(parsedUsers, threshold);
+
+  // Threshold display
+  document.getElementById('thresholdValue').textContent = threshold;
+  document.getElementById('thresholdUnit').textContent = threshold >= 60 ? ' (' + fmtDuration(threshold) + ')' : '';
+
+  // Global stats
+  const totalLines = stats.reduce((a, s) => a + s.lines, 0);
+  const totalActive = stats.reduce((a, s) => a + s.activeSeconds, 0);
+  const avgCadence = totalActive > 0 ? totalLines / (totalActive / 60) : 0;
+
+  // Per-user cadences
+  const cadences = stats.map(s => s.cadence);
+  const moyIndiv = cadences.length > 0 ? cadences.reduce((a, b) => a + b, 0) / cadences.length : 0;
+  const moyEquipe = avgCadence;
+
+  // KPIs
+  document.getElementById('kpiMoyIndiv').textContent = moyIndiv.toFixed(2);
+  document.getElementById('kpiMoyEquipe').textContent = moyEquipe.toFixed(2);
+
+  // Moyenne chart (bar per user + lines for averages)
+  if (charts.moyenne) charts.moyenne.destroy();
+  const ctx = document.getElementById('moyenneChart').getContext('2d');
+  const userLabels = stats.map(s => s.name);
+  const userCadences = stats.map(s => s.cadence);
+
+  charts.moyenne = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: userLabels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Cadence individuelle',
+          data: userCadences,
+          backgroundColor: 'rgba(59,130,246,0.7)',
+          borderRadius: 6,
+          barPercentage: 0.5,
+          order: 2,
+        },
+        {
+          type: 'line',
+          label: 'Moy. individuelle',
+          data: userLabels.map(() => moyIndiv),
+          borderColor: '#3b82f6',
+          borderDash: [6, 4],
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          order: 1,
+        },
+        {
+          type: 'line',
+          label: 'Moy. équipe (pondérée)',
+          data: userLabels.map(() => moyEquipe),
+          borderColor: '#f97316',
+          borderDash: [6, 4],
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          order: 1,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            color: '#64748b',
+            font: { size: 10, family: 'JetBrains Mono' },
+            boxWidth: 12,
+            padding: 12,
+          }
+        },
+        tooltip: {
+          backgroundColor: '#111827',
+          borderColor: '#1e293b',
+          borderWidth: 1,
+          titleColor: '#e2e8f0',
+          bodyColor: '#e2e8f0',
+          titleFont: { family: 'JetBrains Mono', size: 11 },
+          bodyFont: { family: 'JetBrains Mono', size: 11 },
+          callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + ' lig/min' }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } },
+          grid: { display: false },
+          border: { color: '#1e293b' }
+        },
+        y: {
+          ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' }, callback: v => v.toFixed(1) },
+          grid: { color: 'rgba(30,41,59,0.5)' },
+          border: { display: false },
+          beginAtZero: true,
+        }
+      }
+    }
+  });
+
+  // Global stat cards
+  document.getElementById('globalStats').innerHTML = [
+    makeStatCard('Utilisateurs', stats.length, null, '#22d3ee'),
+    makeStatCard('Lignes totales', totalLines, null, '#22d3ee'),
+    makeStatCard('Cadence moy.', avgCadence.toFixed(1), 'lignes/min', '#10b981'),
+    makeStatCard('Temps actif', fmtDuration(totalActive), null, '#f59e0b'),
+  ].join('');
+
+  // Users
+  const container = document.getElementById('usersContainer');
+  container.innerHTML = '';
+
+  stats.forEach((s, idx) => {
+    const id = 'chart_' + idx;
+    const html = `
+      <div class="user-card">
+        <div class="user-header">
+          <div>
+            <span class="user-name">${s.name}</span>
+            <span class="user-time">${fmtTime(s.firstTime)} → ${fmtTime(s.lastTime)}</span>
+          </div>
+          <div class="cadence-badge">${s.cadence.toFixed(1)} <span class="unit">lig/min</span></div>
+        </div>
+        <div class="stats-row">
+          ${makeStatCard('Lignes', s.lines, null, '#22d3ee')}
+          ${makeStatCard('Temps actif', fmtDuration(s.activeSeconds), null, '#10b981')}
+          ${makeStatCard('Pauses', s.pauseCount, fmtDuration(s.pauseSeconds), '#ef4444')}
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">Distribution des écarts</div>
+          <canvas id="${id}" height="180"></canvas>
+          <div class="chart-legend">
+            <span><span class="legend-dot" style="background:#22d3ee"></span> Actif</span>
+            <span><span class="legend-dot" style="background:#ef4444;opacity:0.55"></span> Pause</span>
+          </div>
+        </div>
+      </div>`;
+    container.insertAdjacentHTML('beforeend', html);
+
+    if (charts[id]) charts[id].destroy();
+    const cctx = document.getElementById(id).getContext('2d');
+    charts[id] = new Chart(cctx, {
+      type: 'bar',
+      data: {
+        labels: s.buckets.map(b => b.label),
+        datasets: [{
+          data: s.buckets.map(b => b.count),
+          backgroundColor: s.buckets.map(b => b.min >= threshold ? 'rgba(239,68,68,0.55)' : 'rgba(34,211,238,0.85)'),
+          borderRadius: 4,
+          barPercentage: 0.7,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#111827',
+            borderColor: '#1e293b',
+            borderWidth: 1,
+            titleColor: '#e2e8f0',
+            bodyColor: '#e2e8f0',
+            titleFont: { family: 'JetBrains Mono', size: 11 },
+            bodyFont: { family: 'JetBrains Mono', size: 11 },
+            callbacks: { label: ctx => ctx.parsed.y + ' écarts' }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } },
+            grid: { display: false },
+            border: { color: '#1e293b' }
+          },
+          y: {
+            ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } },
+            grid: { color: 'rgba(30,41,59,0.5)' },
+            border: { display: false }
+          }
+        }
+      }
+    });
+  });
+
+  document.getElementById('results').style.display = 'block';
+}
+
+// ── Events ──
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragging'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragging'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragging');
+  handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+function handleFile(file) {
+  if (!file) return;
+  document.getElementById('uploadContent').innerHTML = `<span class="done">✓ ${file.name}</span><span class="change">— cliquer pour changer</span>`;
+  document.getElementById('errorBox').style.display = 'none';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      parsedUsers = parseExcel(e.target.result);
+      if (parsedUsers.length === 0) {
+        document.getElementById('errorBox').innerHTML = '<div class="error-box">Aucun utilisateur trouvé dans le fichier.</div>';
+        document.getElementById('errorBox').style.display = 'block';
+        document.getElementById('results').style.display = 'none';
+        return;
+      }
+      render(parseInt(document.getElementById('thresholdSlider').value));
+    } catch (err) {
+      document.getElementById('errorBox').innerHTML = `<div class="error-box">Erreur: ${err.message}</div>`;
+      document.getElementById('errorBox').style.display = 'block';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+document.getElementById('thresholdSlider').addEventListener('input', e => {
+  if (parsedUsers.length > 0) render(parseInt(e.target.value));
+});
+</script>
+</body>
+</html>
