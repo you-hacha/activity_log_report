@@ -7,7 +7,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -65,8 +64,6 @@
   .error-box { color: var(--pause); font-size: 13px; padding: 10px 14px; background: rgba(239,68,68,0.08); border-radius: 8px; margin-bottom: 16px; }
   #results { display: none; }
   canvas { max-height: 200px; }
-
-  /* Export button */
   .export-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
   .btn-export {
     background: linear-gradient(135deg, #3b82f6, #2563eb);
@@ -77,8 +74,6 @@
   .btn-export:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(59,130,246,0.35); }
   .btn-export:active { transform: translateY(0); }
   .btn-export:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-  .btn-export .icon { font-size: 16px; }
-
   @media (max-width: 640px) {
     .moyenne-section { flex-direction: column; }
     .moyenne-kpis { flex-direction: row; min-width: 0; }
@@ -92,13 +87,13 @@
   <div class="header">
     <div class="tag">Analyseur</div>
     <h1>Cadence <span>lignes/min</span></h1>
-    <p class="subtitle">Importe un export SAP, ajuste le seuil de pause, visualise la productivité.</p>
+    <p class="subtitle">Importe un export SAP, ajuste le seuil de pause, visualise la productivite.</p>
   </div>
 
   <div class="upload-zone" id="uploadZone">
     <div id="uploadContent">
-      <div class="icon">↑</div>
-      <div class="hint">Glisse ton .xlsx ici ou clique pour sélectionner</div>
+      <div class="icon">&#8593;</div>
+      <div class="hint">Glisse ton .xlsx ici ou clique pour selectionner</div>
     </div>
     <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
   </div>
@@ -106,7 +101,6 @@
   <div id="errorBox" style="display:none"></div>
 
   <div id="results">
-    <!-- Slider -->
     <div class="slider-card">
       <div class="slider-header">
         <span class="slider-label">Seuil de pause</span>
@@ -116,14 +110,12 @@
       <div class="slider-bounds"><span>5s (strict)</span><span>5min (souple)</span></div>
     </div>
 
-    <!-- Export bar -->
     <div class="export-bar">
       <button class="btn-export" id="btnExportPDF" onclick="exportPDF()">
-        <span class="icon">📄</span> Exporter le rapport PDF
+        <span>PDF</span> Exporter le rapport PDF
       </button>
     </div>
 
-    <!-- Moyenne section -->
     <div class="moyenne-section" id="moyenneSection">
       <div class="moyenne-chart-wrap">
         <div class="section-title">Cadence par utilisateur (lignes/min)</div>
@@ -132,13 +124,13 @@
       <div class="moyenne-kpis">
         <div class="kpi-box" style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);">
           <div class="kpi-label" style="color:var(--blue)">Nb lignes/min</div>
-          <div class="kpi-value" style="color:var(--blue)" id="kpiMoyIndiv">—</div>
+          <div class="kpi-value" style="color:var(--blue)" id="kpiMoyIndiv">-</div>
           <div class="kpi-sub" style="color:var(--blue)">Moy. individuelle</div>
         </div>
         <div class="kpi-box" style="background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.25);">
-          <div class="kpi-label" style="color:var(--orange)">Moyenne équipe</div>
-          <div class="kpi-value" style="color:var(--orange)" id="kpiMoyEquipe">—</div>
-          <div class="kpi-sub" style="color:var(--orange)">Pondérée par lignes</div>
+          <div class="kpi-label" style="color:var(--orange)">Moyenne equipe</div>
+          <div class="kpi-value" style="color:var(--orange)" id="kpiMoyEquipe">-</div>
+          <div class="kpi-sub" style="color:var(--orange)">Ponderee par lignes</div>
         </div>
       </div>
     </div>
@@ -149,39 +141,45 @@
 </div>
 
 <script>
+// ── PDF-safe number formatting (no unicode spaces) ──
+function fmtNum(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
 // ── Helpers ──
 function parseTime(val) {
   if (val == null || val === '') return null;
   if (typeof val === 'number') return Math.round(val * 86400);
-  const s = String(val).trim();
-  const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+  var s = String(val).trim();
+  var m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
   if (m) return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseInt(m[3]);
-  if (s.includes('T') || s.includes('1899') || s.includes('1900')) {
-    try { const d = new Date(s); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds(); } catch(e) {}
+  if (s.indexOf('T') >= 0 || s.indexOf('1899') >= 0 || s.indexOf('1900') >= 0) {
+    try { var d = new Date(s); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds(); } catch(e) {}
   }
   return null;
 }
 
-const SKIP = new Set(['résultat', 'résultat global', 'utilisateur', 'heure confirmation', 'atelier', 'expedition']);
+var SKIP_SET = ['resultat', 'résultat', 'resultat global', 'résultat global', 'utilisateur', 'heure confirmation', 'atelier', 'expedition'];
 function isUserCell(val) {
   if (val == null) return false;
-  const s = String(val).trim();
-  if (s === '' || SKIP.has(s.toLowerCase()) || !isNaN(Number(s))) return false;
+  var s = String(val).trim();
+  if (s === '' || !isNaN(Number(s))) return false;
+  if (SKIP_SET.indexOf(s.toLowerCase()) >= 0) return false;
   return true;
 }
 
 function fmtDuration(secs) {
   if (secs < 60) return Math.round(secs) + 's';
   if (secs < 3600) return (secs / 60).toFixed(1) + ' min';
-  const h = Math.floor(secs / 3600);
-  const m = Math.round((secs % 3600) / 60);
-  return h + 'h' + String(m).padStart(2, '0');
+  var h = Math.floor(secs / 3600);
+  var m = Math.round((secs % 3600) / 60);
+  return h + 'h' + (m < 10 ? '0' : '') + m;
 }
 
 function fmtTime(t) {
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  return h + ':' + String(m).padStart(2, '0');
+  var h = Math.floor(t / 3600);
+  var m = Math.floor((t % 3600) / 60);
+  return h + ':' + (m < 10 ? '0' : '') + m;
 }
 
 function makeStatCard(label, value, sub, color) {
@@ -191,137 +189,135 @@ function makeStatCard(label, value, sub, color) {
 }
 
 // ── State ──
-let parsedUsers = [];
-let charts = {};
-let lastStats = [];
-let lastTotalStats = {};
+var parsedUsers = [];
+var charts = {};
+var lastStats = [];
+var lastTotalStats = {};
 
 // ── Parse ──
 function parseExcel(data) {
-  const wb = XLSX.read(new Uint8Array(data), { type: 'array', raw: true });
-  const sheetName = wb.SheetNames.find(n => !n.startsWith('_com.sap')) || wb.SheetNames[0];
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, raw: true });
-  const userMap = new Map();
-  let currentUser = null;
+  var wb = XLSX.read(new Uint8Array(data), { type: 'array', raw: true });
+  var sheetName = wb.SheetNames.filter(function(n) { return n.indexOf('_com.sap') !== 0; })[0] || wb.SheetNames[0];
+  var rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, raw: true });
+  var userMap = new Map();
+  var currentUser = null;
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
     if (!row) continue;
-    const col0 = row[0], col1 = row[1];
+    var col0 = row[0], col1 = row[1];
     if (isUserCell(col0)) currentUser = String(col0).trim();
     if (!currentUser || col1 == null) continue;
-    const col1Str = String(col1).trim().toLowerCase();
-    if (col1Str === 'résultat' || col1Str === 'heure confirmation') continue;
-    const t = parseTime(col1);
+    var col1Str = String(col1).trim().toLowerCase();
+    if (col1Str === 'resultat' || col1Str === 'résultat' || col1Str === 'heure confirmation') continue;
+    var t = parseTime(col1);
     if (t !== null && t > 0 && t < 86400) {
       if (!userMap.has(currentUser)) userMap.set(currentUser, []);
       userMap.get(currentUser).push(t);
     }
   }
 
-  const users = [];
-  for (const [name, times] of userMap) {
-    if (times.length > 1) { times.sort((a, b) => a - b); users.push({ name, times }); }
-  }
+  var users = [];
+  userMap.forEach(function(times, name) {
+    if (times.length > 1) { times.sort(function(a,b) { return a-b; }); users.push({ name: name, times: times }); }
+  });
   return users;
 }
 
 function computeStats(users, threshold) {
-  return users.map(u => {
-    const { times } = u;
-    const deltas = [];
-    let activeSeconds = 0, pauseSeconds = 0, pauseCount = 0;
-    for (let i = 1; i < times.length; i++) {
-      const d = times[i] - times[i - 1];
+  return users.map(function(u) {
+    var times = u.times;
+    var deltas = [];
+    var activeSeconds = 0, pauseSeconds = 0, pauseCount = 0;
+    for (var i = 1; i < times.length; i++) {
+      var d = times[i] - times[i - 1];
       if (d < 0) continue;
       deltas.push(d);
       if (d <= threshold) { activeSeconds += d; } else { pauseSeconds += d; pauseCount++; }
     }
-    const activeMin = activeSeconds / 60;
-    const cadence = activeMin > 0 ? times.length / activeMin : 0;
-    const bucketDefs = [
+    var activeMin = activeSeconds / 60;
+    var cadence = activeMin > 0 ? times.length / activeMin : 0;
+    var bucketDefs = [
       { label: '0-5s', min: 0, max: 5 }, { label: '5-10s', min: 5, max: 10 },
       { label: '10-20s', min: 10, max: 20 }, { label: '20-30s', min: 20, max: 30 },
       { label: '30-60s', min: 30, max: 60 }, { label: '1-2m', min: 60, max: 120 },
       { label: '2-5m', min: 120, max: 300 }, { label: '5m+', min: 300, max: Infinity },
     ];
-    const buckets = bucketDefs.map(b => ({
-      ...b, count: b.min === 0 ? deltas.filter(d => d >= 0 && d <= b.max).length : deltas.filter(d => d > b.min && d <= b.max).length
-    }));
-    return { name: u.name, lines: times.length, firstTime: times[0], lastTime: times[times.length - 1], activeSeconds, pauseSeconds, pauseCount, cadence, buckets };
+    var buckets = bucketDefs.map(function(b) {
+      return { label: b.label, min: b.min, max: b.max,
+        count: b.min === 0 ? deltas.filter(function(d) { return d >= 0 && d <= b.max; }).length : deltas.filter(function(d) { return d > b.min && d <= b.max; }).length };
+    });
+    return { name: u.name, lines: times.length, firstTime: times[0], lastTime: times[times.length - 1], activeSeconds: activeSeconds, pauseSeconds: pauseSeconds, pauseCount: pauseCount, cadence: cadence, buckets: buckets };
   });
 }
 
 // ── Render ──
 function render(threshold) {
-  const stats = computeStats(parsedUsers, threshold);
+  var stats = computeStats(parsedUsers, threshold);
   lastStats = stats;
 
   document.getElementById('thresholdValue').textContent = threshold;
   document.getElementById('thresholdUnit').textContent = threshold >= 60 ? ' (' + fmtDuration(threshold) + ')' : '';
 
-  const totalLines = stats.reduce((a, s) => a + s.lines, 0);
-  const totalActive = stats.reduce((a, s) => a + s.activeSeconds, 0);
-  const avgCadence = totalActive > 0 ? totalLines / (totalActive / 60) : 0;
-  const cadences = stats.map(s => s.cadence);
-  const moyIndiv = cadences.length > 0 ? cadences.reduce((a, b) => a + b, 0) / cadences.length : 0;
+  var totalLines = stats.reduce(function(a, s) { return a + s.lines; }, 0);
+  var totalActive = stats.reduce(function(a, s) { return a + s.activeSeconds; }, 0);
+  var avgCadence = totalActive > 0 ? totalLines / (totalActive / 60) : 0;
+  var cadences = stats.map(function(s) { return s.cadence; });
+  var moyIndiv = cadences.length > 0 ? cadences.reduce(function(a, b) { return a + b; }, 0) / cadences.length : 0;
 
-  lastTotalStats = { totalLines, totalActive, avgCadence, moyIndiv, userCount: stats.length, threshold };
+  lastTotalStats = { totalLines: totalLines, totalActive: totalActive, avgCadence: avgCadence, moyIndiv: moyIndiv, userCount: stats.length, threshold: threshold };
 
   document.getElementById('kpiMoyIndiv').textContent = moyIndiv.toFixed(2);
   document.getElementById('kpiMoyEquipe').textContent = avgCadence.toFixed(2);
 
-  // Moyenne chart
   if (charts.moyenne) charts.moyenne.destroy();
-  const ctx = document.getElementById('moyenneChart').getContext('2d');
-  const sorted = [...stats].sort((a, b) => b.cadence - a.cadence);
+  var ctx = document.getElementById('moyenneChart').getContext('2d');
+  var sorted = stats.slice().sort(function(a, b) { return b.cadence - a.cadence; });
   charts.moyenne = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: sorted.map(s => s.name),
+      labels: sorted.map(function(s) { return s.name; }),
       datasets: [
-        { type: 'bar', label: 'Cadence', data: sorted.map(s => s.cadence), backgroundColor: 'rgba(59,130,246,0.7)', borderRadius: 4, barPercentage: 0.6, order: 2 },
-        { type: 'line', label: 'Moy. indiv.', data: sorted.map(() => moyIndiv), borderColor: '#3b82f6', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, order: 1 },
-        { type: 'line', label: 'Moy. équipe', data: sorted.map(() => avgCadence), borderColor: '#f97316', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, order: 1 }
+        { type: 'bar', label: 'Cadence', data: sorted.map(function(s) { return s.cadence; }), backgroundColor: 'rgba(59,130,246,0.7)', borderRadius: 4, barPercentage: 0.6, order: 2 },
+        { type: 'line', label: 'Moy. indiv.', data: sorted.map(function() { return moyIndiv; }), borderColor: '#3b82f6', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, order: 1 },
+        { type: 'line', label: 'Moy. equipe', data: sorted.map(function() { return avgCadence; }), borderColor: '#f97316', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, order: 1 }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: true, position: 'bottom', labels: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' }, boxWidth: 12, padding: 12 } },
-        tooltip: { backgroundColor: '#111827', borderColor: '#1e293b', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#e2e8f0', titleFont: { family: 'JetBrains Mono', size: 11 }, bodyFont: { family: 'JetBrains Mono', size: 11 }, callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + ' lig/min' } } },
+        tooltip: { backgroundColor: '#111827', borderColor: '#1e293b', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#e2e8f0', titleFont: { family: 'JetBrains Mono', size: 11 }, bodyFont: { family: 'JetBrains Mono', size: 11 }, callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + ' lig/min'; } } } },
       scales: {
         x: { ticks: { color: '#64748b', font: { size: 9, family: 'JetBrains Mono' }, maxRotation: 45 }, grid: { display: false }, border: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' }, callback: v => v.toFixed(1) }, grid: { color: 'rgba(30,41,59,0.5)' }, border: { display: false }, beginAtZero: true }
+        y: { ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' }, callback: function(v) { return v.toFixed(1); } }, grid: { color: 'rgba(30,41,59,0.5)' }, border: { display: false }, beginAtZero: true }
       }
     }
   });
 
-  // Global stats
   document.getElementById('globalStats').innerHTML = [
     makeStatCard('Utilisateurs', stats.length, null, '#22d3ee'),
-    makeStatCard('Lignes totales', totalLines.toLocaleString('fr-FR'), null, '#22d3ee'),
+    makeStatCard('Lignes totales', fmtNum(totalLines), null, '#22d3ee'),
     makeStatCard('Cadence moy.', avgCadence.toFixed(1), 'lignes/min', '#10b981'),
     makeStatCard('Temps actif total', fmtDuration(totalActive), null, '#f59e0b'),
   ].join('');
 
-  // User cards
-  const container = document.getElementById('usersContainer');
+  var container = document.getElementById('usersContainer');
   container.innerHTML = '';
-  sorted.forEach((s, idx) => {
-    const id = 'chart_' + idx;
+  sorted.forEach(function(s, idx) {
+    var id = 'chart_' + idx;
     container.insertAdjacentHTML('beforeend',
       '<div class="user-card"><div class="user-header"><div>' +
-      '<span class="user-name">' + s.name + '</span><span class="user-time">' + fmtTime(s.firstTime) + ' → ' + fmtTime(s.lastTime) + '</span></div>' +
+      '<span class="user-name">' + s.name + '</span><span class="user-time">' + fmtTime(s.firstTime) + ' > ' + fmtTime(s.lastTime) + '</span></div>' +
       '<div class="cadence-badge">' + s.cadence.toFixed(1) + ' <span class="unit">lig/min</span></div></div>' +
-      '<div class="stats-row">' + makeStatCard('Lignes', s.lines.toLocaleString('fr-FR'), null, '#22d3ee') + makeStatCard('Temps actif', fmtDuration(s.activeSeconds), null, '#10b981') + makeStatCard('Pauses', s.pauseCount, fmtDuration(s.pauseSeconds), '#ef4444') + '</div>' +
-      '<div class="chart-box"><div class="chart-title">Distribution des écarts</div><canvas id="' + id + '" height="180"></canvas>' +
+      '<div class="stats-row">' + makeStatCard('Lignes', fmtNum(s.lines), null, '#22d3ee') + makeStatCard('Temps actif', fmtDuration(s.activeSeconds), null, '#10b981') + makeStatCard('Pauses', s.pauseCount, fmtDuration(s.pauseSeconds), '#ef4444') + '</div>' +
+      '<div class="chart-box"><div class="chart-title">Distribution des ecarts</div><canvas id="' + id + '" height="180"></canvas>' +
       '<div class="chart-legend"><span><span class="legend-dot" style="background:#22d3ee"></span> Actif</span><span><span class="legend-dot" style="background:#ef4444;opacity:0.55"></span> Pause</span></div></div></div>');
 
     if (charts[id]) charts[id].destroy();
     charts[id] = new Chart(document.getElementById(id).getContext('2d'), {
       type: 'bar',
-      data: { labels: s.buckets.map(b => b.label), datasets: [{ data: s.buckets.map(b => b.count), backgroundColor: s.buckets.map(b => b.min >= threshold ? 'rgba(239,68,68,0.55)' : 'rgba(34,211,238,0.85)'), borderRadius: 4, barPercentage: 0.7 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#111827', borderColor: '#1e293b', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#e2e8f0', titleFont: { family: 'JetBrains Mono', size: 11 }, bodyFont: { family: 'JetBrains Mono', size: 11 }, callbacks: { label: ctx => ctx.parsed.y + ' écarts' } } },
+      data: { labels: s.buckets.map(function(b) { return b.label; }), datasets: [{ data: s.buckets.map(function(b) { return b.count; }), backgroundColor: s.buckets.map(function(b) { return b.min >= threshold ? 'rgba(239,68,68,0.55)' : 'rgba(34,211,238,0.85)'; }), borderRadius: 4, barPercentage: 0.7 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#111827', borderColor: '#1e293b', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#e2e8f0', titleFont: { family: 'JetBrains Mono', size: 11 }, bodyFont: { family: 'JetBrains Mono', size: 11 }, callbacks: { label: function(ctx) { return ctx.parsed.y + ' ecarts'; } } } },
         scales: { x: { ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } }, grid: { display: false }, border: { color: '#1e293b' } }, y: { ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } }, grid: { color: 'rgba(30,41,59,0.5)' }, border: { display: false } } }
       }
     });
@@ -330,330 +326,209 @@ function render(threshold) {
   document.getElementById('results').style.display = 'block';
 }
 
-// ── PDF Export ──
+// ── PDF Export (ASCII-safe) ──
 async function exportPDF() {
-  const btn = document.getElementById('btnExportPDF');
+  var btn = document.getElementById('btnExportPDF');
   btn.disabled = true;
-  btn.innerHTML = '<span class="icon">⏳</span> Génération en cours...';
-
-  // Wait a tick for UI update
-  await new Promise(r => setTimeout(r, 50));
+  btn.innerHTML = 'Generation en cours...';
+  await new Promise(function(r) { setTimeout(r, 50); });
 
   try {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const W = 210, H = 297;
-    const M = 15; // margin
-    const CW = W - 2 * M; // content width
-    const stats = lastStats;
-    const ts = lastTotalStats;
-    const sorted = [...stats].sort((a, b) => b.cadence - a.cadence);
-    const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    var W = 210, H = 297, M = 15, CW = W - 2 * M;
+    var stats = lastStats;
+    var ts = lastTotalStats;
+    var sorted = stats.slice().sort(function(a, b) { return b.cadence - a.cadence; });
+    var now = new Date();
+    var today = now.getDate() + '/' + (now.getMonth() + 1 < 10 ? '0' : '') + (now.getMonth() + 1) + '/' + now.getFullYear();
 
-    // ── Helper functions ──
-    function setColor(hex) {
-      const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
-      pdf.setTextColor(r, g, b);
-    }
-    function setFill(hex) {
-      const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
-      pdf.setFillColor(r, g, b);
-    }
-    function drawBg() {
-      setFill('#0a0e17');
-      pdf.rect(0, 0, W, H, 'F');
-    }
+    function setC(hex) { pdf.setTextColor(parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)); }
+    function setF(hex) { pdf.setFillColor(parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)); }
+    function bg() { setF('#0a0e17'); pdf.rect(0, 0, W, H, 'F'); }
 
-    // ═══════════════════════════════════════
-    // PAGE 1 — COUVERTURE + SYNTHÈSE ÉQUIPE
-    // ═══════════════════════════════════════
-    drawBg();
+    // === PAGE 1 ===
+    bg();
+    setC('#22d3ee'); pdf.setFontSize(10); pdf.text('RAPPORT DE CADENCE', M, 25);
+    setC('#e2e8f0'); pdf.setFontSize(26); pdf.text('Analyse de productivite', M, 38);
+    setC('#64748b'); pdf.setFontSize(10); pdf.text(today + '  -  Seuil de pause : ' + ts.threshold + 's', M, 48);
+    setF('#1e293b'); pdf.rect(M, 54, CW, 0.5, 'F');
 
-    // Title
-    setColor('#22d3ee');
-    pdf.setFontSize(10);
-    pdf.text('RAPPORT DE CADENCE', M, 25);
-    setColor('#e2e8f0');
-    pdf.setFontSize(26);
-    pdf.text('Analyse de productivité', M, 38);
-    setColor('#64748b');
-    pdf.setFontSize(10);
-    pdf.text(today + '  •  Seuil de pause : ' + ts.threshold + 's', M, 48);
-
-    // Separator
-    setFill('#1e293b');
-    pdf.rect(M, 54, CW, 0.5, 'F');
-
-    // KPI boxes
-    let y = 62;
-    const kpis = [
-      { label: 'UTILISATEURS', value: ts.userCount.toString(), color: '#22d3ee' },
-      { label: 'LIGNES TOTALES', value: ts.totalLines.toLocaleString('fr-FR'), color: '#22d3ee' },
-      { label: 'CADENCE MOY.', value: ts.avgCadence.toFixed(1) + ' lig/min', color: '#10b981' },
-      { label: 'TEMPS ACTIF', value: fmtDuration(ts.totalActive), color: '#f59e0b' },
+    var y = 62;
+    var kpis = [
+      { l: 'UTILISATEURS', v: '' + ts.userCount, c: '#22d3ee' },
+      { l: 'LIGNES TOTALES', v: fmtNum(ts.totalLines), c: '#22d3ee' },
+      { l: 'CADENCE MOY.', v: ts.avgCadence.toFixed(1) + ' lig/min', c: '#10b981' },
+      { l: 'TEMPS ACTIF', v: fmtDuration(ts.totalActive), c: '#f59e0b' },
     ];
-    const kpiW = (CW - 9) / 4;
-    kpis.forEach((k, i) => {
-      const x = M + i * (kpiW + 3);
-      setFill('#111827');
-      pdf.roundedRect(x, y, kpiW, 22, 2, 2, 'F');
-      setColor('#64748b');
-      pdf.setFontSize(6);
-      pdf.text(k.label, x + 4, y + 7);
-      setColor(k.color);
-      pdf.setFontSize(14);
-      pdf.text(k.value, x + 4, y + 17);
+    var kW = (CW - 9) / 4;
+    kpis.forEach(function(k, i) {
+      var x = M + i * (kW + 3);
+      setF('#111827'); pdf.roundedRect(x, y, kW, 22, 2, 2, 'F');
+      setC('#64748b'); pdf.setFontSize(6); pdf.text(k.l, x + 4, y + 7);
+      setC(k.c); pdf.setFontSize(14); pdf.text(k.v, x + 4, y + 17);
     });
 
-    // Moyenne chart capture
     y = 92;
-    setColor('#64748b');
-    pdf.setFontSize(8);
-    pdf.text('CADENCE PAR UTILISATEUR', M, y);
-    y += 4;
+    setC('#64748b'); pdf.setFontSize(8); pdf.text('CADENCE PAR UTILISATEUR', M, y); y += 4;
+    var moyCanvas = document.getElementById('moyenneChart');
+    var moyImg = moyCanvas.toDataURL('image/png', 1.0);
+    var moyAspect = moyCanvas.width / moyCanvas.height;
+    var moyH = Math.min(CW / moyAspect, 70);
+    pdf.addImage(moyImg, 'PNG', M, y, CW, moyH); y += moyH + 8;
 
-    const moyCanvas = document.getElementById('moyenneChart');
-    const moyImg = moyCanvas.toDataURL('image/png', 1.0);
-    const moyAspect = moyCanvas.width / moyCanvas.height;
-    const moyH = CW / moyAspect;
-    pdf.addImage(moyImg, 'PNG', M, y, CW, Math.min(moyH, 70));
-    y += Math.min(moyH, 70) + 8;
-
-    // KPI summary
-    setFill('#111827');
-    pdf.roundedRect(M, y, CW / 2 - 2, 20, 2, 2, 'F');
-    setColor('#64748b');
-    pdf.setFontSize(6);
-    pdf.text('MOYENNE INDIVIDUELLE', M + 5, y + 7);
-    setColor('#3b82f6');
-    pdf.setFontSize(16);
-    pdf.text(ts.moyIndiv.toFixed(2) + ' lig/min', M + 5, y + 16);
-
-    setFill('#111827');
-    pdf.roundedRect(M + CW / 2 + 2, y, CW / 2 - 2, 20, 2, 2, 'F');
-    setColor('#64748b');
-    pdf.setFontSize(6);
-    pdf.text('MOYENNE ÉQUIPE (PONDÉRÉE)', M + CW / 2 + 7, y + 7);
-    setColor('#f97316');
-    pdf.setFontSize(16);
-    pdf.text(ts.avgCadence.toFixed(2) + ' lig/min', M + CW / 2 + 7, y + 16);
+    setF('#111827'); pdf.roundedRect(M, y, CW / 2 - 2, 20, 2, 2, 'F');
+    setC('#64748b'); pdf.setFontSize(6); pdf.text('MOYENNE INDIVIDUELLE', M + 5, y + 7);
+    setC('#3b82f6'); pdf.setFontSize(16); pdf.text(ts.moyIndiv.toFixed(2) + ' lig/min', M + 5, y + 16);
+    setF('#111827'); pdf.roundedRect(M + CW / 2 + 2, y, CW / 2 - 2, 20, 2, 2, 'F');
+    setC('#64748b'); pdf.setFontSize(6); pdf.text('MOYENNE EQUIPE (PONDEREE)', M + CW / 2 + 7, y + 7);
+    setC('#f97316'); pdf.setFontSize(16); pdf.text(ts.avgCadence.toFixed(2) + ' lig/min', M + CW / 2 + 7, y + 16);
     y += 28;
 
-    // Team analysis text
-    setColor('#e2e8f0');
-    pdf.setFontSize(10);
-    pdf.text('Analyse équipe', M, y);
-    y += 6;
-    setColor('#94a3b8');
-    pdf.setFontSize(8);
+    setC('#e2e8f0'); pdf.setFontSize(10); pdf.text('Analyse equipe', M, y); y += 6;
+    setC('#94a3b8'); pdf.setFontSize(8);
 
-    const best = sorted[0];
-    const worst = sorted[sorted.length - 1];
-    const aboveAvg = sorted.filter(s => s.cadence >= ts.avgCadence).length;
-    const totalPauses = stats.reduce((a, s) => a + s.pauseCount, 0);
+    var best = sorted[0], worst = sorted[sorted.length - 1];
+    var aboveAvg = sorted.filter(function(s) { return s.cadence >= ts.avgCadence; }).length;
+    var totalPauses = stats.reduce(function(a, s) { return a + s.pauseCount; }, 0);
 
-    const teamAnalysis = [
-      'L\'équipe compte ' + ts.userCount + ' opérateurs pour un total de ' + ts.totalLines.toLocaleString('fr-FR') + ' lignes traitées.',
-      'La cadence moyenne pondérée est de ' + ts.avgCadence.toFixed(2) + ' lignes/min (moyenne individuelle : ' + ts.moyIndiv.toFixed(2) + ').',
-      aboveAvg + '/' + ts.userCount + ' opérateurs se situent au-dessus de la moyenne équipe.',
-      'Meilleure cadence : ' + best.name + ' (' + best.cadence.toFixed(1) + ' lig/min, ' + best.lines + ' lignes).',
-      'Cadence la plus basse : ' + worst.name + ' (' + worst.cadence.toFixed(1) + ' lig/min, ' + worst.lines + ' lignes).',
-      'Écart max : x' + (best.cadence / worst.cadence).toFixed(1) + ' entre le plus rapide et le plus lent.',
-      totalPauses + ' pauses détectées au total (seuil > ' + ts.threshold + 's).',
+    var lines = [
+      "L'equipe compte " + ts.userCount + " operateurs pour un total de " + fmtNum(ts.totalLines) + " lignes traitees.",
+      "La cadence moyenne ponderee est de " + ts.avgCadence.toFixed(2) + " lignes/min (moyenne individuelle : " + ts.moyIndiv.toFixed(2) + ").",
+      aboveAvg + "/" + ts.userCount + " operateurs se situent au-dessus de la moyenne equipe.",
+      "Meilleure cadence : " + best.name + " (" + best.cadence.toFixed(1) + " lig/min, " + fmtNum(best.lines) + " lignes).",
+      "Cadence la plus basse : " + worst.name + " (" + worst.cadence.toFixed(1) + " lig/min, " + fmtNum(worst.lines) + " lignes).",
+      "Ecart max : x" + (best.cadence / worst.cadence).toFixed(1) + " entre le plus rapide et le plus lent.",
+      fmtNum(totalPauses) + " pauses detectees au total (seuil > " + ts.threshold + "s).",
     ];
-    teamAnalysis.forEach(line => {
-      const lines = pdf.splitTextToSize('• ' + line, CW);
-      lines.forEach(l => { pdf.text(l, M, y); y += 4.5; });
+    lines.forEach(function(line) {
+      var split = pdf.splitTextToSize("- " + line, CW);
+      split.forEach(function(l) { pdf.text(l, M, y); y += 4.5; });
     });
 
-    // Ranking table
     y += 4;
-    setColor('#64748b');
-    pdf.setFontSize(7);
-    pdf.text('CLASSEMENT', M, y);
-    y += 4;
-
-    // Table header
-    setFill('#1e293b');
-    pdf.roundedRect(M, y, CW, 7, 1, 1, 'F');
-    setColor('#94a3b8');
-    pdf.setFontSize(7);
-    pdf.text('#', M + 3, y + 5);
-    pdf.text('Utilisateur', M + 12, y + 5);
-    pdf.text('Lignes', M + 55, y + 5);
-    pdf.text('Temps actif', M + 82, y + 5);
-    pdf.text('Pauses', M + 115, y + 5);
-    pdf.text('Cadence', M + 145, y + 5);
+    setC('#64748b'); pdf.setFontSize(7); pdf.text('CLASSEMENT', M, y); y += 4;
+    setF('#1e293b'); pdf.roundedRect(M, y, CW, 7, 1, 1, 'F');
+    setC('#94a3b8'); pdf.setFontSize(7);
+    pdf.text('#', M + 3, y + 5); pdf.text('Utilisateur', M + 12, y + 5); pdf.text('Lignes', M + 55, y + 5);
+    pdf.text('Temps actif', M + 82, y + 5); pdf.text('Pauses', M + 115, y + 5); pdf.text('Cadence', M + 145, y + 5);
     y += 8;
 
-    sorted.forEach((s, i) => {
-      if (y > H - 20) { pdf.addPage(); drawBg(); y = 20; }
-      const isEven = i % 2 === 0;
-      if (isEven) { setFill('#0f1624'); pdf.rect(M, y - 4, CW, 7, 'F'); }
-      setColor('#e2e8f0');
-      pdf.setFontSize(7);
-      pdf.text(String(i + 1), M + 3, y);
-      setColor('#22d3ee');
-      pdf.text(s.name, M + 12, y);
-      setColor('#e2e8f0');
-      pdf.text(s.lines.toLocaleString('fr-FR'), M + 55, y);
+    sorted.forEach(function(s, i) {
+      if (y > H - 20) { pdf.addPage(); bg(); y = 20; }
+      if (i % 2 === 0) { setF('#0f1624'); pdf.rect(M, y - 4, CW, 7, 'F'); }
+      setC('#e2e8f0'); pdf.setFontSize(7); pdf.text('' + (i + 1), M + 3, y);
+      setC('#22d3ee'); pdf.text(s.name, M + 12, y);
+      setC('#e2e8f0'); pdf.text(fmtNum(s.lines), M + 55, y);
       pdf.text(fmtDuration(s.activeSeconds), M + 82, y);
-      setColor('#ef4444');
-      pdf.text(s.pauseCount.toString(), M + 115, y);
-      setColor('#10b981');
-      pdf.setFontSize(8);
-      pdf.text(s.cadence.toFixed(2) + ' lig/min', M + 145, y);
+      setC('#ef4444'); pdf.text('' + s.pauseCount, M + 115, y);
+      setC('#10b981'); pdf.setFontSize(8); pdf.text(s.cadence.toFixed(2) + ' lig/min', M + 145, y);
       y += 7;
     });
 
-    // ═══════════════════════════════════
-    // PAGES SUIVANTES — FICHES PAR USER
-    // ═══════════════════════════════════
-    for (let idx = 0; idx < sorted.length; idx++) {
-      const s = sorted[idx];
-      pdf.addPage();
-      drawBg();
-      y = 20;
+    // === FICHES INDIVIDUELLES ===
+    sorted.forEach(function(s, idx) {
+      pdf.addPage(); bg(); y = 20;
 
-      // User header
-      setColor('#22d3ee');
-      pdf.setFontSize(8);
-      pdf.text('FICHE INDIVIDUELLE  •  ' + (idx + 1) + '/' + sorted.length, M, y);
-      y += 8;
+      setC('#22d3ee'); pdf.setFontSize(8); pdf.text('FICHE INDIVIDUELLE  -  ' + (idx + 1) + '/' + sorted.length, M, y); y += 8;
+      setC('#e2e8f0'); pdf.setFontSize(20); pdf.text(s.name, M, y);
+      setC('#10b981'); pdf.setFontSize(16); pdf.text(s.cadence.toFixed(1) + ' lig/min', M + CW - 50, y); y += 6;
+      setC('#64748b'); pdf.setFontSize(9); pdf.text('Plage : ' + fmtTime(s.firstTime) + ' > ' + fmtTime(s.lastTime), M, y); y += 8;
+      setF('#1e293b'); pdf.rect(M, y, CW, 0.5, 'F'); y += 8;
 
-      setColor('#e2e8f0');
-      pdf.setFontSize(20);
-      pdf.text(s.name, M, y);
-
-      setColor('#10b981');
-      pdf.setFontSize(16);
-      pdf.text(s.cadence.toFixed(1) + ' lig/min', M + CW - 50, y);
-      y += 6;
-
-      setColor('#64748b');
-      pdf.setFontSize(9);
-      pdf.text('Plage : ' + fmtTime(s.firstTime) + ' → ' + fmtTime(s.lastTime), M, y);
-      y += 8;
-
-      // Separator
-      setFill('#1e293b');
-      pdf.rect(M, y, CW, 0.5, 'F');
-      y += 8;
-
-      // KPIs
-      const uKpis = [
-        { label: 'LIGNES TRAITÉES', value: s.lines.toLocaleString('fr-FR'), color: '#22d3ee' },
-        { label: 'TEMPS ACTIF', value: fmtDuration(s.activeSeconds), color: '#10b981' },
-        { label: 'PAUSES DÉTECTÉES', value: s.pauseCount.toString(), color: '#ef4444' },
-        { label: 'TEMPS EN PAUSE', value: fmtDuration(s.pauseSeconds), color: '#f59e0b' },
+      var uKpis = [
+        { l: 'LIGNES TRAITEES', v: fmtNum(s.lines), c: '#22d3ee' },
+        { l: 'TEMPS ACTIF', v: fmtDuration(s.activeSeconds), c: '#10b981' },
+        { l: 'PAUSES DETECTEES', v: '' + s.pauseCount, c: '#ef4444' },
+        { l: 'TEMPS EN PAUSE', v: fmtDuration(s.pauseSeconds), c: '#f59e0b' },
       ];
-      uKpis.forEach((k, i) => {
-        const x = M + i * (kpiW + 3);
-        setFill('#111827');
-        pdf.roundedRect(x, y, kpiW, 22, 2, 2, 'F');
-        setColor('#64748b');
-        pdf.setFontSize(6);
-        pdf.text(k.label, x + 4, y + 7);
-        setColor(k.color);
-        pdf.setFontSize(13);
-        pdf.text(k.value, x + 4, y + 17);
+      uKpis.forEach(function(k, i) {
+        var x = M + i * (kW + 3);
+        setF('#111827'); pdf.roundedRect(x, y, kW, 22, 2, 2, 'F');
+        setC('#64748b'); pdf.setFontSize(6); pdf.text(k.l, x + 4, y + 7);
+        setC(k.c); pdf.setFontSize(13); pdf.text(k.v, x + 4, y + 17);
       });
       y += 30;
 
-      // Chart
-      const chartCanvas = document.getElementById('chart_' + idx);
+      var chartCanvas = document.getElementById('chart_' + idx);
       if (chartCanvas) {
-        setColor('#64748b');
-        pdf.setFontSize(8);
-        pdf.text('DISTRIBUTION DES ÉCARTS', M, y);
-        y += 4;
-        const chartImg = chartCanvas.toDataURL('image/png', 1.0);
-        const cAspect = chartCanvas.width / chartCanvas.height;
-        const cH = CW / cAspect;
-        pdf.addImage(chartImg, 'PNG', M, y, CW, Math.min(cH, 60));
-        y += Math.min(cH, 60) + 8;
+        setC('#64748b'); pdf.setFontSize(8); pdf.text('DISTRIBUTION DES ECARTS', M, y); y += 4;
+        var cImg = chartCanvas.toDataURL('image/png', 1.0);
+        var cA = chartCanvas.width / chartCanvas.height;
+        var cH = Math.min(CW / cA, 60);
+        pdf.addImage(cImg, 'PNG', M, y, CW, cH); y += cH + 8;
       }
 
-      // Individual analysis
-      setColor('#e2e8f0');
-      pdf.setFontSize(10);
-      pdf.text('Analyse', M, y);
-      y += 6;
-      setColor('#94a3b8');
-      pdf.setFontSize(8);
+      setC('#e2e8f0'); pdf.setFontSize(10); pdf.text('Analyse', M, y); y += 6;
+      setC('#94a3b8'); pdf.setFontSize(8);
 
-      const ratio = s.activeSeconds / (s.activeSeconds + s.pauseSeconds);
-      const rank = idx + 1;
-      const vsAvg = ((s.cadence - ts.avgCadence) / ts.avgCadence * 100);
-      const topBucket = s.buckets.reduce((a, b) => b.count > a.count ? b : a);
+      var ratio = s.activeSeconds / (s.activeSeconds + s.pauseSeconds);
+      var rank = idx + 1;
+      var vsAvg = ((s.cadence - ts.avgCadence) / ts.avgCadence * 100);
+      var topBucket = s.buckets.reduce(function(a, b) { return b.count > a.count ? b : a; });
 
-      const userAnalysis = [
-        s.name + ' a traité ' + s.lines.toLocaleString('fr-FR') + ' lignes entre ' + fmtTime(s.firstTime) + ' et ' + fmtTime(s.lastTime) + '.',
-        'Cadence effective : ' + s.cadence.toFixed(2) + ' lignes/min (' + (vsAvg >= 0 ? '+' : '') + vsAvg.toFixed(1) + '% vs moyenne équipe).',
-        'Classement : ' + rank + (rank === 1 ? 'er' : 'ème') + ' sur ' + sorted.length + ' opérateurs.',
-        'Taux d\'activité : ' + (ratio * 100).toFixed(1) + '% du temps total (actif : ' + fmtDuration(s.activeSeconds) + ', pauses : ' + fmtDuration(s.pauseSeconds) + ').',
-        s.pauseCount + ' pause(s) détectée(s) au-delà du seuil de ' + ts.threshold + 's.',
-        'Écart le plus fréquent : tranche ' + topBucket.label + ' (' + topBucket.count + ' occurrences).',
+      var uLines = [
+        s.name + " a traite " + fmtNum(s.lines) + " lignes entre " + fmtTime(s.firstTime) + " et " + fmtTime(s.lastTime) + ".",
+        "Cadence effective : " + s.cadence.toFixed(2) + " lignes/min (" + (vsAvg >= 0 ? "+" : "") + vsAvg.toFixed(1) + "% vs moyenne equipe).",
+        "Classement : " + rank + (rank === 1 ? "er" : "eme") + " sur " + sorted.length + " operateurs.",
+        "Taux d'activite : " + (ratio * 100).toFixed(1) + "% du temps total (actif : " + fmtDuration(s.activeSeconds) + ", pauses : " + fmtDuration(s.pauseSeconds) + ").",
+        s.pauseCount + " pause(s) detectee(s) au-dela du seuil de " + ts.threshold + "s.",
+        "Ecart le plus frequent : tranche " + topBucket.label + " (" + fmtNum(topBucket.count) + " occurrences).",
       ];
 
       if (vsAvg >= 10) {
-        userAnalysis.push('Performance supérieure à la moyenne — opérateur efficace et régulier.');
+        uLines.push("Performance superieure a la moyenne - operateur efficace et regulier.");
       } else if (vsAvg <= -10) {
-        userAnalysis.push('Performance en dessous de la moyenne — un accompagnement pourrait être bénéfique.');
+        uLines.push("Performance en dessous de la moyenne - un accompagnement pourrait etre benefique.");
       } else {
-        userAnalysis.push('Performance dans la moyenne de l\'équipe.');
+        uLines.push("Performance dans la moyenne de l'equipe.");
       }
 
-      userAnalysis.forEach(line => {
-        const lines = pdf.splitTextToSize('• ' + line, CW);
-        lines.forEach(l => { pdf.text(l, M, y); y += 4.5; });
+      uLines.forEach(function(line) {
+        var split = pdf.splitTextToSize("- " + line, CW);
+        split.forEach(function(l) { pdf.text(l, M, y); y += 4.5; });
       });
 
-      // Footer
-      setColor('#1e293b');
-      pdf.setFontSize(7);
-      pdf.text('Rapport généré le ' + today + '  •  Seuil : ' + ts.threshold + 's', M, H - 10);
-    }
+      setC('#1e293b'); pdf.setFontSize(7);
+      pdf.text('Rapport genere le ' + today + '  -  Seuil : ' + ts.threshold + 's', M, H - 10);
+    });
 
-    // Save
-    const fileName = 'rapport_cadence_' + new Date().toISOString().slice(0, 10) + '.pdf';
-    pdf.save(fileName);
-
+    pdf.save('rapport_cadence_' + new Date().toISOString().slice(0, 10) + '.pdf');
   } catch (err) {
     console.error(err);
-    alert('Erreur lors de la génération : ' + err.message);
+    alert('Erreur: ' + err.message);
   }
 
   btn.disabled = false;
-  btn.innerHTML = '<span class="icon">📄</span> Exporter le rapport PDF';
+  btn.innerHTML = '<span>PDF</span> Exporter le rapport PDF';
 }
 
 // ── Events ──
-const uploadZone = document.getElementById('uploadZone');
-const fileInput = document.getElementById('fileInput');
-uploadZone.addEventListener('click', () => fileInput.click());
-uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragging'); });
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragging'));
-uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('dragging'); handleFile(e.dataTransfer.files[0]); });
-fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+var uploadZone = document.getElementById('uploadZone');
+var fileInput = document.getElementById('fileInput');
+uploadZone.addEventListener('click', function() { fileInput.click(); });
+uploadZone.addEventListener('dragover', function(e) { e.preventDefault(); uploadZone.classList.add('dragging'); });
+uploadZone.addEventListener('dragleave', function() { uploadZone.classList.remove('dragging'); });
+uploadZone.addEventListener('drop', function(e) { e.preventDefault(); uploadZone.classList.remove('dragging'); handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', function(e) { handleFile(e.target.files[0]); });
 
 function handleFile(file) {
   if (!file) return;
-  const size = (file.size / 1024).toFixed(0);
-  document.getElementById('uploadContent').innerHTML = '<span class="done">✓ ' + file.name + '</span><span class="change"> — ' + size + ' Ko — chargement...</span>';
+  var size = (file.size / 1024).toFixed(0);
+  document.getElementById('uploadContent').innerHTML = '<span class="done">OK ' + file.name + '</span><span class="change"> - ' + size + ' Ko - chargement...</span>';
   document.getElementById('errorBox').style.display = 'none';
   document.getElementById('results').style.display = 'none';
-  const reader = new FileReader();
-  reader.onload = e => {
+  var reader = new FileReader();
+  reader.onload = function(e) {
     try {
       parsedUsers = parseExcel(e.target.result);
       if (parsedUsers.length === 0) {
-        document.getElementById('errorBox').innerHTML = '<div class="error-box">Aucun utilisateur trouvé.</div>';
+        document.getElementById('errorBox').innerHTML = '<div class="error-box">Aucun utilisateur trouve.</div>';
         document.getElementById('errorBox').style.display = 'block';
         return;
       }
-      const totalLines = parsedUsers.reduce((a, u) => a + u.times.length, 0);
-      document.getElementById('uploadContent').innerHTML = '<span class="done">✓ ' + file.name + '</span><span class="change"> — ' + parsedUsers.length + ' utilisateurs, ' + totalLines.toLocaleString('fr-FR') + ' lignes — cliquer pour changer</span>';
+      var totalLines = parsedUsers.reduce(function(a, u) { return a + u.times.length; }, 0);
+      document.getElementById('uploadContent').innerHTML = '<span class="done">OK ' + file.name + '</span><span class="change"> - ' + parsedUsers.length + ' utilisateurs, ' + fmtNum(totalLines) + ' lignes</span>';
       render(parseInt(document.getElementById('thresholdSlider').value));
     } catch (err) {
       document.getElementById('errorBox').innerHTML = '<div class="error-box">Erreur: ' + err.message + '</div>';
@@ -663,7 +538,7 @@ function handleFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
-document.getElementById('thresholdSlider').addEventListener('input', e => {
+document.getElementById('thresholdSlider').addEventListener('input', function(e) {
   if (parsedUsers.length > 0) render(parseInt(e.target.value));
 });
 </script>
