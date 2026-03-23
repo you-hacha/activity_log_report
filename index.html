@@ -407,11 +407,12 @@ async function exportPDF() {
     });
 
     y += 4;
-    setC('#64748b'); pdf.setFontSize(7); pdf.text('CLASSEMENT', M, y); y += 4;
-    setF('#1e293b'); pdf.roundedRect(M, y, CW, 7, 1, 1, 'F');
-    setC('#94a3b8'); pdf.setFontSize(7);
+    setC('#e2e8f0'); pdf.setFontSize(8); pdf.text('CLASSEMENT', M, y); y += 4;
+    setF('#1e3a5f'); pdf.roundedRect(M, y, CW, 7, 1, 1, 'F');
+    setC('#e2e8f0'); pdf.setFontSize(7); pdf.setFont(undefined, 'bold');
     pdf.text('#', M + 3, y + 5); pdf.text('Utilisateur', M + 12, y + 5); pdf.text('Lignes', M + 55, y + 5);
     pdf.text('Temps actif', M + 82, y + 5); pdf.text('Pauses', M + 115, y + 5); pdf.text('Cadence', M + 145, y + 5);
+    pdf.setFont(undefined, 'normal');
     y += 8;
 
     sorted.forEach(function(s, i) {
